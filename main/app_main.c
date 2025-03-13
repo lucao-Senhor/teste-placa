@@ -22,103 +22,132 @@
 #include "esp_log.h"
 
 #include "HCF_IOTEC.h"   // Vai se tornar HCF_IOTEC
-#include "HCF_LCD.h" // Vai se tornar HCF_LCD
-#include "HCF_ADC.h"   // Vai se tornar HCF_ADC
-#include "HCF_MP.h"   // Vai se tornar HCF_MP
-// Incluir HCF_IOT HCF_BT HCF_DHT HCF_ULTRA HCF_RFID HCF_ZMPT HCF_ACS HCF_SERVO HCF_OLED HCF_CAM HCF_SD HCF_LORA
+#include "HCF_LCD.h"      // Vai se tornar HCF_LCD
+#include "HCF_ADC.h"      // Vai se tornar HCF_ADC
+#include "HCF_MP.h"       // Vai se tornar HCF_MP
 
-
-// Área das macros
-//-----------------------------------------------------------------------------------------------------------------------
-
+// Área de macros
 #define IN(x) (entradas>>x)&1
 
-// Área de declaração de variáveis e protótipos de funções
-//-----------------------------------------------------------------------------------------------------------------------
-
-static const char *TAG = "Placa";
-static uint8_t entradas, saidas = 0; //variáveis de controle de entradas e saídas
+// Variáveis globais
+static const char *TAG = "Calculadora";
+static uint8_t entradas, saidas = 0;
 static char tecla = '-' ;
 char escrever[40];
 
-// Funções e ramos auxiliares
-//-----------------------------------------------------------------------------------------------------------------------
+// Variáveis para a calculadora
+float num1 = 0, num2 = 0, resultado = 0;
+char operador = '\0';  // Armazena o operador da operação
+char display[40];
 
+// Funções auxiliares
+void limpar_tela() {
+    limpar_lcd();
+    escreve_lcd(1, 0, "                ");  // Limpa a linha
+    escreve_lcd(2, 0, "                ");  // Limpa a linha
+}
 
-// Programa Principal
-//-----------------------------------------------------------------------------------------------------------------------
+void mostrar_resultado() {
+    snprintf(display, sizeof(display), "Resultado: %.2f", resultado);
+    escreve_lcd(1, 0, display);
+}
 
-void app_main(void)
-{
-    /////////////////////////////////////////////////////////////////////////////////////   Programa principal
+// Função que executa a operação
+void realizar_operacao() {
+    switch (operador) {
+        case '+':
+            resultado = num1 + num2;
+            break;
+        case '-':
+            resultado = num1 - num2;
+            break;
+        case 'x':
+            resultado = num1 * num2;
+            break;
+        case '/':
+            if (num2 != 0) {
+                resultado = num1 / num2;
+            } else {
+                resultado = 0;  // Evita divisão por zero
+            }
+            break;
+        default:
+            resultado = 0;
+            break;
+    }
+    mostrar_resultado();
+}
+
+// Função para processar a tecla pressionada
+void processar_tecla(char tecla) {
+    static char input[20];
+    static int idx = 0;
+    
+    if (tecla >= '0' && tecla <= '9') {
+        // Adiciona o número ao input
+        input[idx++] = tecla;
+        input[idx] = '\0';  // Garante que a string esteja terminada
+        snprintf(display, sizeof(display), "Entrada: %s", input);
+        escreve_lcd(2, 0, display);  // Exibe a entrada atual no LCD
+    } 
+    else if (tecla == '+' || tecla == '-' || tecla == 'x' || tecla == '/') {
+        num1 = atof(input);  // Salva o primeiro número
+        operador = tecla;    // Salva o operador
+        idx = 0;             // Reseta o input para o próximo número
+        limpar_tela();       // Limpa a tela para o próximo número
+    }
+    else if (tecla == '=') {
+        num2 = atof(input);  // Salva o segundo número
+        realizar_operacao(); // Realiza a operação e mostra o resultado
+        idx = 0;             // Reseta o input
+    } 
+    else if (tecla == 'C') {
+        limpar_tela();       // Limpa a tela
+        num1 = 0;
+        num2 = 0;
+        operador = '\0';
+        idx = 0;
+    }
+}
+
+void app_main(void) {
+    // Inicializações
     escrever[39] = '\0';
-
-    // a seguir, apenas informações de console, aquelas notas verdes no início da execução
     ESP_LOGI(TAG, "Iniciando...");
     ESP_LOGI(TAG, "Versão do IDF: %s", esp_get_idf_version());
 
-    /////////////////////////////////////////////////////////////////////////////////////   Inicializações de periféricos (manter assim)
-    
-    // inicializar os IOs e teclado da placa
-    iniciar_iotec();      
+    // Inicializar os IOs e teclado da placa
+    iniciar_iotec();
     entradas = io_le_escreve(saidas); // Limpa as saídas e lê o estado das entradas
 
-    // inicializar o display LCD 
+    // Inicializar o display LCD
     iniciar_lcd();
-    escreve_lcd(1,0,"    Jornada 1   ");
-    escreve_lcd(2,0," Programa Basico");
+    escreve_lcd(1, 0, "Calculadora Básica");
+    escreve_lcd(2, 0, "Aguarde...");
     
-    // Inicializar o componente de leitura de entrada analógica
+    // Inicializar o componente ADC
     esp_err_t init_result = iniciar_adc_CHX(0);
     if (init_result != ESP_OK) {
-        ESP_LOGE("MAIN", "Erro ao inicializar o componente ADC personalizado");
+        ESP_LOGE("MAIN", "Erro ao inicializar o ADC");
     }
 
-    //delay inicial
+    // Delay inicial
     vTaskDelay(1000 / portTICK_PERIOD_MS); 
     limpar_lcd();
 
-    /////////////////////////////////////////////////////////////////////////////////////   Periféricos inicializados
+    // Programa principal
+    while (1) {
+        tecla = le_teclado();  // Lê a tecla pressionada
 
- 
+        if (tecla) {
+            processar_tecla(tecla);  // Processa a tecla pressionada
+        }
 
-    /////////////////////////////////////////////////////////////////////////////////////   Início do ramo principal                    
-    while (1)                                                                                                                         
-    {                                                                                                                                 
-        //_______________________________________________________________________________________________________________________________________________________ //
-        //-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  - -  -  -  -  -  -  -  -  -  -  Escreva seu código aqui!!! //
-        tecla = le_teclado();     
-        if(tecla > '0' && tecla <= '8')
-        {
-            saidas = 1 << (tecla - '0' - 1);
-        }            
-        else if (tecla == '9')
-        {
-            saidas = 0xFF;
-        }                                  
-        else if (tecla == '0')
-        {
-            saidas = 0x00;
-        }                                                                                                      
-        
-        entradas = io_le_escreve(saidas);
+        entradas = io_le_escreve(saidas);  // Atualiza as entradas/saídas
 
-        sprintf(escrever, "INPUTS:%d%d%d%d%d%d%d%d", IN(7),IN(6),IN(5),IN(4),IN(3),IN(2),IN(1),IN(0));
-        escreve_lcd(1,0,escrever);
-
-        sprintf(escrever, "%c", tecla);
-        escreve_lcd(2,14,escrever);
-
-        
-        
-        //-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  - -  -  -  -  -  -  -  -  -  -  Escreva seu só até aqui!!! //
-        //________________________________________________________________________________________________________________________________________________________//
-        vTaskDelay(10 / portTICK_PERIOD_MS);    // delay mínimo obrigatório, se retirar, pode causar reset do ESP
+        vTaskDelay(100 / portTICK_PERIOD_MS);  // Delay para evitar sobrecarga de CPU
     }
     
-    // caso erro no programa, desliga o módulo ADC
+    // Limpar ADC após o uso
     adc_limpar();
-
-    /////////////////////////////////////////////////////////////////////////////////////   Fim do ramo principal
-    
 }
